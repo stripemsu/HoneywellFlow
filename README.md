@@ -10,13 +10,16 @@ Hardware used: RaspberryPi 3, I2C Switch TCA9548A, HAFUHT0100L4AXT sensors
 Sensors connected on Ch0 and Ch1 with 2KOhm pull-up resistors.
 
 ## Install
-server script expected at /srv/flow/FlowServer.py
+server script expected at `/srv/flow/FlowServer.py`
 
+```bash
 $ chmod +x /srv/flow/FlowServer.py
+```
 
-put systemd script to /lib/systemd/system/flowserver.service
-'''bash
+put systemd script to `/lib/systemd/system/flowserver.service`
+
+```bash
 $ sudo systemctl daemon-reload
 $ sudo systemctl start flowserver.service
 $ sudo systemctl enable flowserver.service
-'''
+```
