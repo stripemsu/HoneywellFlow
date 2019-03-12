@@ -75,54 +75,55 @@ class FlowSensor:
                 try:
                         f1=(ord(fl[0])<<8)|(ord(fl[1]))
                         if(f1&0b1100000000000000!=0):
-                                print 'Flow error on n.%d: 0x'%(self.maddr)+toHex(fl)
+                                print 'Data on ch.%d: 0x'%(self.maddr)+toHex(fl)
                                 return None
                 except:
-                        #print 'Flow read error on n.%d'%self.maddr
-                        return
+                        return None
                 flow = self.maxflow * (f1/16384.0-0.1)/0.8
                 return flow
 
 class FlowData:
-        Flow=None
+        MassFlow=0.0
         currFlow=None
         Sensor=None
         Name=""
+        TotalTime=None
         def __init__(self,name,sensor):
                 self.Name=name
                 self.Sensor=sensor
         def read(self):
                 self.currFlow=self.Sensor.read()
         def initFlow(self):
-                self.Flow=self.currFlow
-        def updateFlow(self,TimeMult):
-                if self.Flow==None:
-                        self.initFlow()
-                        return
+                self.MassFlow=0.0
+                self.TotalTime=0
+        def updateFlow(self,MeasTime):
                 if self.currFlow==None:
                         return
-                self.Flow+=(self.Flow-self.currFlow)*TimeMult
+                self.MassFlow+=self.currFlow*MeasTime
+                self.TotalTime+=MeasTime
+        def getMassFlow(self):
+                return self.MassFlow/self.TotalTime
                 
 #Web server related classes
 class FlowClass:
         Flow=[]
-        TimeRead=None
-        TimeMeas=None
+        CountStartTime=None
+        LastReadTime=None
         Cnts=0
 
         def __init__(self):
                 self.i2cbus=i2c()
                 self.mult=i2cMult(self.i2cbus)
                 t=datetime.now()
-                self.TimeRead=t
-                self.TimeMeas=t
+                self.CountStartTime=t
+                self.LastReadTime=t
         def add(self, name, i2caddr):
                 self.Flow.append(FlowData(name,FlowSensor(self.i2cbus,self.mult,i2caddr)))
         def data(self):
-                self.TimeRead=self.TimeMeas
                 data={}
+                self.CountStartTime=self.LastReadTime
                 for flow in self.Flow:
-                        data[flow.Name]=flow.Flow
+                        data[flow.Name]=flow.getMassFlow()
                 data['counts']=self.Cnts
                 #print(data)
                 return data
@@ -130,25 +131,33 @@ class FlowClass:
                 t=datetime.now()
                 for flow in self.Flow:
                         flow.read()
-                #print([f.currFlow for f in self.Flow],(t-self.TimeRead).total_seconds())
-
-                for flow in self.Flow:
-                        flow.read()
-                
-                if self.TimeRead==self.TimeMeas:
-                        self.TimeMeas=t
+                if self.CountStartTime is None:
+                        self.CountStartTime = t
+                        self.LastReadTime = t
                         for flow in self.Flow:
                                 flow.initFlow()
+                                #first two readings after power up sensor return non-flow data
+                                flow.read()
+                                flow.read()
+                        return
+                #debug=[]
+                for flow in self.Flow:
+                        flow.read()
+                        #debug.append("{}: {} slmp".format(flow.Name,flow.currFlow))
+                #print(", ".join(debug))
+                
+                if self.CountStartTime==self.LastReadTime:
+                        self.LastReadTime=t
+                        meastime=(self.LastReadTime-self.CountStartTime).total_seconds()
+                        for flow in self.Flow:
+                                flow.initFlow()
+                                flow.updateFlow(meastime)
                         self.Cnts=1
                 else:
-                        try:
-                                tmult = 1.0*((t-self.TimeMeas).total_seconds())/((t-self.TimeRead).total_seconds())
-                        except:
-                                # is t == self.TimeRead -> div by 0?
-                                return
-                        self.TimeMeas=t
+                        meastime=(t-self.LastReadTime).total_seconds()
+                        self.LastReadTime=t
                         for flow in self.Flow:
-                                flow.updateFlow(tmult)                        
+                                flow.updateFlow(meastime)                        
                         self.Cnts+=1
 
 class server(HTTPServer):
