@@ -78,50 +78,77 @@ class FlowSensor:
                                 print 'Flow error on n.%d: 0x'%(self.maddr)+toHex(fl)
                                 return None
                 except:
-                        print 'Flow read error on n.%d'%self.maddr
+                        #print 'Flow read error on n.%d'%self.maddr
+                        return
                 flow = self.maxflow * (f1/16384.0-0.1)/0.8
                 return flow
 
+class FlowData:
+        Flow=None
+        currFlow=None
+        Sensor=None
+        Name=""
+        def __init__(self,name,sensor):
+                self.Name=name
+                self.Sensor=sensor
+        def read(self):
+                self.currFlow=self.Sensor.read()
+        def initFlow(self):
+                self.Flow=self.currFlow
+        def updateFlow(self,TimeMult):
+                if self.Flow==None:
+                        self.initFlow()
+                        return
+                if self.currFlow==None:
+                        return
+                self.Flow+=(self.Flow-self.currFlow)*TimeMult
+                
 #Web server related classes
 class FlowClass:
-        Flow_CR=None
-        Flow_MBE=None
+        Flow=[]
         TimeRead=None
         TimeMeas=None
         Cnts=0
 
-        def __init__(self,CR_addr=0,MBE_addr=1):
-                i2cbus=i2c()
-                mult=i2cMult(i2cbus)
-                self.SensCR=FlowSensor(i2cbus,mult,CR_addr)
-                self.SensMBE=FlowSensor(i2cbus,mult,MBE_addr)
+        def __init__(self):
+                self.i2cbus=i2c()
+                self.mult=i2cMult(self.i2cbus)
+                t=datetime.now()
+                self.TimeRead=t
+                self.TimeMeas=t
+        def add(self, name, i2caddr):
+                self.Flow.append(FlowData(name,FlowSensor(self.i2cbus,self.mult,i2caddr)))
         def data(self):
                 self.TimeRead=self.TimeMeas
-                return {'CR':self.Flow_CR, 'MBE': self.Flow_MBE,'counts':self.Cnts}
+                data={}
+                for flow in self.Flow:
+                        data[flow.Name]=flow.Flow
+                data['counts']=self.Cnts
+                #print(data)
+                return data
         def measure(self):
                 t=datetime.now()
-                f_cr=self.SensCR.read()
-                f_mbe=self.SensMBE.read()
-                if self.TimeMeas is None:
+                for flow in self.Flow:
+                        flow.read()
+                #print([f.currFlow for f in self.Flow],(t-self.TimeRead).total_seconds())
+
+                for flow in self.Flow:
+                        flow.read()
+                
+                if self.TimeRead==self.TimeMeas:
                         self.TimeMeas=t
-                        self.TimeRead=t
-                        self.Flow_CR=f_cr
-                        self.Flow_MBE=f_mbe
-                elif self.TimeRead==self.TimeMeas:
-                        self.TimeMeas=t
-                        self.Flow_CR=f_cr
-                        self.Flow_MBE=f_mbe
-                        self.Cnts=0
+                        for flow in self.Flow:
+                                flow.initFlow()
+                        self.Cnts=1
                 else:
                         try:
                                 tmult = 1.0*((t-self.TimeMeas).total_seconds())/((t-self.TimeRead).total_seconds())
                         except:
+                                # is t == self.TimeRead -> div by 0?
                                 return
                         self.TimeMeas=t
-                       if f_cr is not None:
-                                        self.Flow_CR=(f_cr-self.Flow_CR)*tmult
-                        if f_mbe is not None:
-                                        self.Flow_MBE=(f_mbe-self.Flow_MBE)*tmult
+                        for flow in self.Flow:
+                                flow.updateFlow(tmult)                        
                         self.Cnts+=1
 
 class server(HTTPServer):
@@ -142,7 +169,9 @@ class handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
         #hardware init
-        Flow=FlowClass(0,1)
+        Flow=FlowClass()
+        Flow.add('MBE',0)
+        Flow.add('CR',1)
         GetFlowData=Flow.data
         addr='127.0.0.1'
         port=8083
