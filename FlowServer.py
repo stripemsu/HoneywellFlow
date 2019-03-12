@@ -69,7 +69,8 @@ class FlowSensor:
                 self.i2cmlt=mult
                 self.maddr=multaddr
         def read(self):
-                self.i2cmlt.SetCh(self.maddr)
+                if self.maddr is not None:
+                        self.i2cmlt.SetCh(self.maddr)
                 self.i2c.SetAddrR(self.HAFAddr)
                 fl=self.i2c.read(2)
                 try:
@@ -179,6 +180,7 @@ class handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
         #hardware init
         Flow=FlowClass()
+        #Flow.add('Wst',None) # for single sensor connect directly to RPi
         Flow.add('MBE',0)
         Flow.add('CR',1)
         GetFlowData=Flow.data
