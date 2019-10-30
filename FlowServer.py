@@ -44,12 +44,12 @@ class i2cMult:
                 GPIO.setmode(GPIO.BCM)
                 GPIO.setwarnings(False)
                 GPIO.setup(self.RstIO, GPIO.OUT)
-                GPIO.output(self.RstIO, 1);
+                GPIO.output(self.RstIO, 1)
                 self.i2c=i2c
         def reset(self):
-                GPIO.output(self.RstIO, 0);
-                sleep(0.001);
-                GPIO.output(self.RstIO, 1);
+                GPIO.output(self.RstIO, 0)
+                sleep(0.001)
+                GPIO.output(self.RstIO, 1)
         def __del__(self):
                 GPIO.cleanup()
         def SetCh(self,ch):
@@ -64,10 +64,11 @@ class i2cMult:
 class FlowSensor:
         HAFAddr=0x49
         maxflow=100 #100 sccm
-        def __init__(self,i2c,mult,multaddr):
+        def __init__(self,i2c,mult,multaddr, MaxFlow=100):
                 self.i2c=i2c
                 self.i2cmlt=mult
                 self.maddr=multaddr
+                self.maxflow = MaxFlow
         def read(self):
                 if self.maddr is not None:
                         self.i2cmlt.SetCh(self.maddr)
@@ -76,7 +77,7 @@ class FlowSensor:
                 try:
                         f1=(ord(fl[0])<<8)|(ord(fl[1]))
                         if(f1&0b1100000000000000!=0):
-                                print 'Data on ch.%d: 0x'%(self.maddr)+toHex(fl)
+                                print('Data on ch.%d: 0x'%(self.maddr)+toHex(fl))
                                 return None
                 except:
                         return None
@@ -118,8 +119,8 @@ class FlowClass:
                 t=datetime.now()
                 self.CountStartTime=t
                 self.LastReadTime=t
-        def add(self, name, i2caddr):
-                self.Flow.append(FlowData(name,FlowSensor(self.i2cbus,self.mult,i2caddr)))
+        def add(self, name, i2caddr, MaxFlow):
+                self.Flow.append(FlowData(name,FlowSensor(self.i2cbus,self.mult,i2caddr,MaxFlow)))
         def data(self):
                 data={}
                 self.CountStartTime=self.LastReadTime
@@ -168,9 +169,9 @@ class server(HTTPServer):
 
 class handler(BaseHTTPRequestHandler):
   def log_request(*args):
-    pass;
+    pass
   def do_GET(self):
-        global GetFlowData;
+        global GetFlowData
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
@@ -181,13 +182,13 @@ if __name__ == "__main__":
         #hardware init
         Flow=FlowClass()
         #Flow.add('Wst',None) # for single sensor connect directly to RPi
-        Flow.add('MBE',0)
-        Flow.add('CR',1)
+        Flow.add('MBE',0, 300)
+        Flow.add('CR',1, 100)
         GetFlowData=Flow.data
         addr='127.0.0.1'
         port=8083
         httpd = server( (addr, port),handler)
-        print 'Started httpd serivce on %s port %d...' % (addr,port)
+        print('Started httpd serivce on %s port %d...' % (addr,port))
         while True:
                 httpd.handle_request()
                 Flow.measure()
